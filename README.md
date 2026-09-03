@@ -12,7 +12,10 @@ project/
 ├── dat/
 │   ├── dat_example1
 │   ├── dat_example2
-├── encoder.py
+├── work1/    
+│   ├── encoder         # Accumulating rate encoding
+├── work2/
+│   ├── encoder         # Dual-timescale Adaptive Spike Encoder
 └── README.md
 ```
 
