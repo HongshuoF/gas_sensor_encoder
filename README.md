@@ -23,6 +23,8 @@ project/
 ## About
 This is two different spike encoder for gas sensor response, the fuction names of both encoders are increase_delta_encode and min_rate_encoder in encoder.py. For the increase_delta_encode, the code for dividing the response stage of the gas sensor is only for demonstration purposes. The actual division of the sensor's response stage is carried out on the training set, and it is fixed during the actual test.
 
+MAPPED DATA IN FLODER dat IS ONLY USED IN WORK1
+
 
 ## How to use
 Run the main fuction in encoder.py

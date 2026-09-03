@@ -6,26 +6,31 @@ from types import SimpleNamespace
 import torch
 import torch.nn.functional as F
 
-sensor_num = 6 # 6 in dataset example 1 and 8 in dataset example 2
+sensor_count = 6  # 6 in dataset example 1 and 4 in dataset example 2
 time_step = 60 # time step in each inference
 batch_size = 5
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-DATASET_SENSOR_COUNTS = {
+SENSOR_COUNT_BY_DATASET = {
     "dat_example1(classifcation_of_wine_quality).csv": 6,
-    "dat_example2(classifcation_of_gas_category).csv": 8,
+    "dat_example2(classifcation_of_gas_category).csv": 4,
     "data2.csv": 4,
 }
 
-# Input: [batch_size, sensor_num * T]
-# Output: outspike_list: [encoding_steps, batch_size, sensor_num]
+
+def _get_sensor_count(config):
+    """Read the configured sensor count, falling back to the module default."""
+    return int(getattr(config, "sensor_count", sensor_count))
+
+# Input: [batch_size, sensor_count * T]
+# Output: outspike_list: [encoding_steps, batch_size, sensor_count]
 def min_rate_encoder(self, input):
 
-    sensor_count = int(getattr(self, "sensor_num", sensor_num))
+    sensor_count = _get_sensor_count(self)
     encoding_steps = int(getattr(self, "time_step", time_step))
     if sensor_count <= 0 or input.shape[1] % sensor_count != 0:
         raise ValueError(
-            "The number of input values must be divisible by sensor_num"
+            "The number of input values must be divisible by sensor_count"
         )
 
     outspike_list = []
@@ -327,7 +332,7 @@ def increase_delta_encode(
     """Encode responses using automatically detected response boundaries.
 
     ``input`` contains numeric sensor responses only and has shape
-    ``[batch_size, sensor_num * T]``. Values at each time point are ordered by
+    ``[batch_size, sensor_count * T]``. Values at each time point are ordered by
     sensor. The CSV class-label column must be removed before calling this
     function. If the response pair is unsupported, ``t1 = t2 = 0`` is used;
     if the recovery pair is unsupported, ``t3 = t4 = T`` is used. 
@@ -335,10 +340,10 @@ def increase_delta_encode(
     The code for dividing the response stage of the gas sensor is only for demonstration purposes. 
     The actual division of the sensor's response stage is carried out on the training set, and it is fixed during the actual test.
     """
-    sensor_count = int(getattr(self, "sensor_num", sensor_num))
+    sensor_count = _get_sensor_count(self)
     if sensor_count <= 0 or input.shape[1] % sensor_count != 0:
         raise ValueError(
-            "The number of input values must be divisible by sensor_num"
+            "The number of input values must be divisible by sensor_count"
         )
 
     batch_size = input.shape[0]
@@ -405,7 +410,7 @@ def _load_csv_responses(csv_path, sensor_count):
             if not values or len(values) % sensor_count != 0:
                 raise ValueError(
                     f"Row {row_number} of {csv_path.name} must contain "
-                    f"sensor_num * T response values"
+                    f"sensor_count * T response values"
                 )
             response_rows.append(torch.tensor(values, dtype=torch.float32))
 
@@ -422,7 +427,7 @@ def _encode_response_rows(response_rows, sensor_count):
 
     min_rate_results = [None] * len(response_rows)
     increase_delta_results = [None] * len(response_rows)
-    encoder_config = SimpleNamespace(sensor_num=sensor_count, time_step=time_step)
+    encoder_config = SimpleNamespace(sensor_count=sensor_count, time_step=time_step)
 
     for row_indices in rows_by_length.values():
         for batch_start in range(0, len(row_indices), batch_size):
@@ -446,12 +451,12 @@ def _encode_response_rows(response_rows, sensor_count):
     return min_rate_results, increase_delta_results
 
 
-def main(dat_directory=None, dataset_sensor_counts=None, max_batches=1):
+def main(dat_directory=None, sensor_count_by_dataset=None, max_batches=1):
     """Load every CSV dataset in ``dat`` and run both spike encoders.
 
     Each result dictionary is keyed by CSV filename. Its value is a list in
     CSV row order; each list item is a spike tensor with shape
-    ``[encoding_steps, sensor_num]``. The list representation supports datasets
+    ``[encoding_steps, sensor_count]``. The list representation supports datasets
     whose rows contain different numbers of time points. By default, only the
     first batch of five rows from each dataset is encoded. Set ``max_batches``
     to ``None`` to encode every row.
@@ -461,9 +466,9 @@ def main(dat_directory=None, dataset_sensor_counts=None, max_batches=1):
     else:
         dat_directory = Path(dat_directory)
 
-    sensor_counts = DATASET_SENSOR_COUNTS.copy()
-    if dataset_sensor_counts is not None:
-        sensor_counts.update(dataset_sensor_counts)
+    configured_sensor_count = SENSOR_COUNT_BY_DATASET.copy()
+    if sensor_count_by_dataset is not None:
+        configured_sensor_count.update(sensor_count_by_dataset)
 
     csv_paths = sorted(dat_directory.glob("*.csv"))
     if not csv_paths:
@@ -473,13 +478,13 @@ def main(dat_directory=None, dataset_sensor_counts=None, max_batches=1):
     increase_delta_encoded_results = {}
 
     for csv_path in csv_paths:
-        if csv_path.name not in sensor_counts:
+        if csv_path.name not in configured_sensor_count:
             raise ValueError(
-                f"sensor_num is not configured for {csv_path.name}; pass it "
-                "through dataset_sensor_counts"
+                f"sensor_count is not configured for {csv_path.name}; pass it "
+                "through sensor_count_by_dataset"
             )
 
-        sensor_count = int(sensor_counts[csv_path.name])
+        sensor_count = int(configured_sensor_count[csv_path.name])
         _, response_rows = _load_csv_responses(csv_path, sensor_count)
         if max_batches is not None:
             response_rows = response_rows[:max_batches * batch_size]
